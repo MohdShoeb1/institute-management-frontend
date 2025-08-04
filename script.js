@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE = "http://localhost:5000/api"
+const API_BASE = "https://institute-management-backend-eys4.onrender.com//api"
 //const API_BASE = "/api";
 
 // Global State
@@ -1614,3 +1614,4 @@ style.textContent = `
     .font-mono { font-family: 'Courier New', monospace; }
 `
 document.head.appendChild(style)
+
