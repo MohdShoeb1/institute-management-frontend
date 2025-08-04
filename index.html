@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institute Management System</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>s
+    <!-- Login Page -->
+    <div id="loginPage" class="page active">
+        <div class="login-container">
+            <div class="login-card">
+                <h1><i class="fas fa-graduation-cap"></i> GURUKUL COMPUTER INSTITUTE MANAGEMENT SYSTEM</h1>
+                <p>Sign in to access the dashboard</p>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="password-input">
+                            <input type="password" id="password" required>
+                            <button type="button" class="password-toggle" onclick="togglePassword()">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> Sign In
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboardPage" class="page">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-graduation-cap"></i> GURUKUL COMPUTER INSTITUTE MANAGEMENT SYSTEM</h1>
+                <div class="header-actions">
+                    <span id="welcomeUser">Welcome</span>
+                    <button id="themeToggle" class="btn btn-icon" title="Toggle Theme">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button id="logoutBtn" class="btn btn-outline">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="tab-btn active" data-tab="dashboard">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </button>
+            <button class="tab-btn" data-tab="students">
+                <i class="fas fa-users"></i> Students
+            </button>
+            <button class="tab-btn" data-tab="payments">
+                <i class="fas fa-credit-card"></i> Payments
+            </button>
+            <button class="tab-btn" data-tab="courses">
+                <i class="fas fa-book"></i> Courses
+            </button>
+            <button class="tab-btn" data-tab="reports">
+                <i class="fas fa-chart-bar"></i> Reports
+            </button>
+            <button class="tab-btn" data-tab="users" id="usersTab" style="display: none;">
+                <i class="fas fa-user-cog"></i> Users
+            </button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="totalStudents">0</h3>
+                        <p>Total Students</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="totalRevenue">$0</h3>
+                        <p>Total Revenue</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="pendingAmount">$0</h3>
+                        <p>Pending Amount</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon purple">
+                        <i class="fas fa-book"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="totalCourses">0</h3>
+                        <p>Courses</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Recent Students</h2>
+                    <button id="refreshDashboard" class="btn btn-outline btn-sm">
+                        <i class="fas fa-refresh"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div class="table-container">
+                        <table id="recentStudentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Mobile NO.</th>
+                                    <th>Enrollment Date</th>
+                                    <th>Father's Name</th>
+                                    <th>Course</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="empty-state">
+                                        <i class="fas fa-users"></i>
+                                        <p>No students found. Add your first student to get started!</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Students Tab -->
+        <div id="students" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Student Management</h2>
+                    <div class="header-actions">
+                        <button id="downloadAllStudents" class="btn btn-outline btn-sm">
+                            <i class="fas fa-download"></i> Download All
+                        </button>
+                        <button id="downloadActiveStudents" class="btn btn-outline btn-sm" style="display: none;">
+                            <i class="fas fa-download"></i> Download Active
+                        </button>
+                        <button id="downloadInactiveStudents" class="btn btn-outline btn-sm" style="display: none;">
+                            <i class="fas fa-download"></i> Download Inactive
+                        </button>
+                        <button id="downloadCompletedStudents" class="btn btn-outline btn-sm" style="display: none;">
+                            <i class="fas fa-download"></i> Download Completed
+                        </button>
+                        <button id="downloadDroppedStudents" class="btn btn-outline btn-sm" style="display: none;">
+                            <i class="fas fa-download"></i> Download Dropped
+                        </button>
+                        <button id="addStudentBtn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Student
+                        </button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="filters">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="searchStudents" placeholder="Search students..." class="search-input">
+                        </div>
+                        <select id="branchFilter" class="filter-select">
+                            <option value="all">All Branches</option>
+                            <option value="Raebareli">Raebareli</option>
+                            <option value="Lalganj">Lalganj</option>
+                        </select>
+                        <select id="statusFilter" class="filter-select">
+                            <option value="all">All Status</option>
+                            <option value="Active">Active</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Inactive">Inactive</option>
+                            <option value="Dropped">Dropped</option>
+                        </select>
+                        <select id="courseFilter" class="filter-select">
+                            <option value="all">All Courses</option>
+                        </select>
+                        <button id="clearFilters" class="btn btn-outline btn-sm">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table id="studentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Phone</th>
+                                    <th>DOB</th>
+                                    <th>Father's Name</th>
+                                    <th>Course</th>
+                                    <th>Total Fee</th>
+                                    <th>Paid Amount</th>
+                                    <th>Balance</th>
+                                    <th>Enrollment Date</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payments Tab -->
+        <div id="payments" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Payment History</h2>
+                    <div class="header-actions">
+                        <input type="date" id="paymentDateFilter" class="date-filter">
+                        <button id="clearPaymentFilter" class="btn btn-outline btn-sm">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="table-container">
+                        <table id="paymentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Student</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Receipt Number</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Courses Tab -->
+        <div id="courses" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Course Management</h2>
+                    <button id="addCourseBtn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Course
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div class="table-container">
+                        <table id="coursesTable">
+                            <thead>
+                                <tr>
+                                    <th>Course Name</th>
+                                    <th>Duration</th>
+                                    <th>Fee</th>
+                                    <th>Description</th>
+                                    <th>Enrolled Students</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Tab -->
+        <div id="reports" class="tab-content">
+            <div class="reports-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Fee Collection Summary</h2>
+                    </div>
+                    <div class="card-content">
+                        <div class="summary-stats">
+                            <div class="summary-item">
+                                <span>Total Expected Revenue:</span>
+                                <span id="expectedRevenue" class="amount">$0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Total Collected:</span>
+                                <span id="collectedRevenue" class="amount success">$0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Outstanding Amount:</span>
+                                <span id="outstandingAmount" class="amount danger">$0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Collection Rate:</span>
+                                <span id="collectionRate" class="amount">0%</span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Dropped Students Total Fees:</span>
+                                <span id="droppedStudentsFees" class="amount danger">₹0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Export Reports</h2>
+                        <button id="exportReportBtn" class="btn btn-primary">
+                            <i class="fas fa-download"></i> Export PDF
+                        </button>
+                    </div>
+                    <div class="card-content">
+                        <p>Generate comprehensive reports for your institute</p>
+                        <div class="report-stats">
+                            <div class="stat-item">
+                                <span>Total Students:</span>
+                                <span id="reportTotalStudents">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Active Enrollments:</span>
+                                <span id="reportActiveStudents">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Total Payments:</span>
+                                <span id="reportTotalPayments">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Tab (Admin Only) -->
+        <div id="users" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>User Management</h2>
+                    <button id="addUserBtn" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> Add User
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div class="table-container">
+                        <table id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Created Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Student Modal -->
+<div id="addStudentModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Add New Student</h2>
+            <button class="modal-close">&times;</button>
+        </div>
+        <form id="addStudentForm">
+            <div class="form-group">
+                <label for="studentName">Full Name *</label>
+                <input type="text" id="studentName" required>
+            </div>
+            <div class="form-group">
+                <label for="studentFather">Father's Name *</label>
+                <input type="text" id="studentFather" required>
+            </div>
+            <div class="form-group">
+                <label for="studentPhone">Phone</label>
+                <input type="tel" id="studentPhone">
+            </div>
+            <div class="form-group">
+                <label for="studentDOB">DOB *</label>
+                <input type="date" id="studentDOB" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="studentCourse">Course *</label>
+                    <select id="studentCourse" required>
+                        <option value="">Select a course</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="studentBranch">Branch *</label>
+                    <select id="studentBranch" required>
+                        <option value="">Select branch</option>
+                        <option value="Raebareli">Raebareli</option>
+                        <option value="Lalganj">Lalganj</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="enrollmentDate">Enrollment Date</label>
+                <input type="date" id="enrollmentDate">
+            </div>
+            <div class="form-group">
+                <label for="studentDiscount">Discount (optional)</label>
+                <input type="number" id="studentDiscount" min="0" step="0.01" placeholder="Enter discount amount">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addStudentModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Add Student
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+    <!-- Add Course Modal -->
+    <div id="addCourseModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Course</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="addCourseForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="courseName">Course Name *</label>
+                        <input type="text" id="courseName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="courseDuration">Duration *</label>
+                        <input type="text" id="courseDuration" placeholder="e.g., 6 months" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="courseFee">Course Fee (₹) *</label>
+                    <input type="number" id="courseFee" min="0" step="0.01" required placeholder="Enter fee in ₹">
+                </div>
+                <div class="form-group">
+                    <label for="courseDescription">Description</label>
+                    <textarea id="courseDescription" rows="3" placeholder="Course description..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addCourseModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Course
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New User</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="addUserForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="newUsername">Username *</label>
+                        <input type="text" id="newUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newUserEmail">Email</label>
+                        <input type="email" id="newUserEmail">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="newUserPassword">Password *</label>
+                        <input type="password" id="newUserPassword" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newUserRole">Role *</label>
+                        <select id="newUserRole" required>
+                            <option value="staff">Staff</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addUserModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> Add User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="editUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit User</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="editUserForm">
+                <div class="form-group">
+                    <label for="editUsername">Username *</label>
+                    <input type="text" id="editUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="editUserPassword">Password (leave blank to keep unchanged)</label>
+                    <input type="password" id="editUserPassword">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('editUserModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <button type="button" class="btn btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" id="deleteUserBtn">
+                        <i class="fas fa-trash"></i> Delete User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Process Payment</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="paymentStudentInfo" class="student-info"></div>
+            <form id="paymentForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="paymentAmount">Payment Amount *</label>
+                        <input type="number" id="paymentAmount" step="0.01" min="0.01" required placeholder="Enter amount in ₹">
+                    </div>
+                    <div class="form-group">
+                        <label for="paymentMethod">Payment Method *</label>
+                        <select id="paymentMethod" required>
+                            <option value="">Select method</option>
+                            <option value="cash">Cash</option>
+                            <option value="card">Credit/Debit Card</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="upi">UPI</option>
+                            <option value="cheque">Cheque</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="feeType">Fee Type *</label>
+                        <select id="feeType" required>
+                            <option value="">Select fee type</option>
+                            <option value="admission">Admission Fees</option>
+                            <option value="tuition">Tuition Fees</option>
+                            <option value="exam">Exam Fees</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="paymentNotes">Notes (Optional)</label>
+                        <textarea id="paymentNotes" rows="2" placeholder="Payment notes..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('paymentModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-credit-card"></i> Process Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
