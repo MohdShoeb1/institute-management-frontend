@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE = "https://institute-management-backend-eys4.onrender.com//api"
+const API_BASE = "https://institute-management-backend-3mtt.onrender.com/api"
 //const API_BASE = "/api";
 
 // Global State
@@ -570,7 +570,11 @@ function createStudentRow(student, isRecent = false) {
                 <button class="btn btn-sm btn-outline" onclick="generateReceipt('${student._id}')">
                     <i class="fas fa-file-pdf"></i> Receipt
                 </button>
-                ${status !== "Dropped" ? `
+                ${status === "Dropped" ? `
+                <button class="btn btn-sm btn-outline" style="color: var(--success-color); border-color: var(--success-color);" onclick="markAsActive('${student._id}')">
+                    <i class="fas fa-user-check"></i> Activate
+                </button>
+                ` : status !== "Dropped" ? `
                 <button class="btn btn-sm btn-outline" style="color: var(--warning-color); border-color: var(--warning-color);" onclick="markAsDropped('${student._id}')">
                     <i class="fas fa-user-times"></i> Drop
                 </button>
@@ -1122,6 +1126,7 @@ function generateReceipt(studentId) {
   
   // Add logo image with proper async loading
   const img = new Image()
+  img.crossOrigin = "anonymous"
   img.onload = function() {
     doc.addImage(img, 'JPEG', 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
   }
@@ -1130,7 +1135,7 @@ function generateReceipt(studentId) {
     doc.setFillColor(220, 38, 38)
     doc.circle(20, 15, 4, 'F')
   }
-  img.src = 'gurukulss.jpg'
+  img.src = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/gurukulss.jpg-ycKYkXo4bqCjVFFNW3RKOduvoFRNw9.jpeg'
   
   // Institute name with logo
   doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth/2, 15, { align: "center" })
@@ -1173,7 +1178,9 @@ function generateReceipt(studentId) {
           endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
         }
         const today = new Date()
-        if ((student.paid_amount || 0) >= student.total_fee) {
+        if (student.status === "Dropped") {
+          status = "Dropped"
+        } else if ((student.paid_amount || 0) >= student.total_fee) {
           status = "Completed"
         } else if (endDate && today > endDate) {
           status = "Inactive"
@@ -1216,6 +1223,7 @@ function generatePaymentReceipt(payment) {
   
   // Add logo image with proper async loading
   const img = new Image()
+  img.crossOrigin = "anonymous"
   img.onload = function() {
     doc.addImage(img, 'JPEG', 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
   }
@@ -1224,7 +1232,7 @@ function generatePaymentReceipt(payment) {
     doc.setFillColor(220, 38, 38)
     doc.circle(20, 15, 4, 'F')
   }
-  img.src = 'gurukulss.jpg'
+  img.src = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/gurukulss.jpg-ycKYkXo4bqCjVFFNW3RKOduvoFRNw9.jpeg'
   
   // Institute name with logo
   doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth/2, 15, { align: "center" })
@@ -1297,7 +1305,9 @@ function exportReport() {
       endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
     }
     const today = new Date()
-    if ((student.paid_amount || 0) >= student.total_fee) {
+    if (student.status === "Dropped") {
+      actualStatus = "Dropped"
+    } else if ((student.paid_amount || 0) >= student.total_fee) {
       actualStatus = "Completed"
     } else if (endDate && today > endDate) {
       actualStatus = "Inactive"
@@ -1564,8 +1574,15 @@ function generateStudentsPDF(studentsList, status) {
 
 // Mark student as dropped
 window.markAsDropped = function(studentId) {
-  if (confirm("Are you sure you want to mark this student as dropped? This action cannot be undone.")) {
+  if (confirm("Are you sure you want to mark this student as dropped? This action can be reversed later.")) {
     updateStudentStatus(studentId, "Dropped")
+  }
+}
+
+// NEW FUNCTION: Mark student as active (undrop)
+window.markAsActive = function(studentId) {
+  if (confirm("Are you sure you want to reactivate this student? This will change their status from Dropped to Active.")) {
+    updateStudentStatus(studentId, "Active")
   }
 }
 
@@ -1577,7 +1594,8 @@ async function updateStudentStatus(studentId, status) {
       body: JSON.stringify({ status: status }),
     })
     if (response.success) {
-      showToast(`Student marked as ${status.toLowerCase()} successfully!`, "success")
+      const actionText = status === "Active" ? "reactivated" : status.toLowerCase()
+      showToast(`Student ${actionText} successfully!`, "success")
       loadStudents()
       loadDashboardData()
     } else {
@@ -1614,4 +1632,3 @@ style.textContent = `
     .font-mono { font-family: 'Courier New', monospace; }
 `
 document.head.appendChild(style)
-
