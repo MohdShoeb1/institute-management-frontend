@@ -9,7 +9,11 @@ let payments = []
 let courses = []
 let users = []
 let selectedStudentForPayment = null
-let editingUserId = null;
+let editingUserId = null
+
+let recentStudentsAll = [] // sorted list for dashboard only
+let recentStudentsPage = 1
+let recentStudentsPageSize = 5
 
 // DOM Elements
 const loginPage = document.getElementById("loginPage")
@@ -411,19 +415,47 @@ async function apiCall(endpoint, options = {}) {
   return response.json()
 }
 
+function toDateSafe(val) {
+  try {
+    return new Date(val)
+  } catch {
+    return new Date()
+  }
+}
+
 // Dashboard Functions
 async function loadDashboardData() {
   try {
     showLoading(true)
+
+    // Keeps API the same and avoids backend changes.
     const [studentsData, paymentsData, coursesData] = await Promise.all([
-      apiCall("/students"),
-      apiCall("/payments"),
-      apiCall("/courses"),
+      apiCall(`/students?page=1&page_size=100`), // pull up to 100 for recent list
+      apiCall(`/payments?page=1&page_size=25`),
+      apiCall(`/courses?page=1&page_size=100`),
     ])
 
     students = studentsData.data || []
     payments = paymentsData.data || []
     courses = coursesData.data || []
+
+    recentStudentsAll = [...students].sort((a, b) => {
+      const da = toDateSafe(a.enrollment_date || a.created_at || 0)
+      const db = toDateSafe(b.enrollment_date || b.created_at || 0)
+      return db - da
+    })
+
+    // Initialize page size from selector if present
+    const sizeSel = document.getElementById("recentStudentsPageSize")
+    if (sizeSel) {
+      const selVal = Number.parseInt(sizeSel.value, 10)
+      if (!Number.isNaN(selVal)) recentStudentsPageSize = selVal
+      sizeSel.onchange = () => {
+        recentStudentsPageSize = Number.parseInt(sizeSel.value, 10) || 5
+        recentStudentsPage = 1
+        updateRecentStudentsTable()
+      }
+    }
 
     updateDashboardStats()
     updateRecentStudentsTable()
@@ -436,48 +468,127 @@ async function loadDashboardData() {
   }
 }
 
-function updateDashboardStats() {
-  const totalStudents = students.length
-  const activeStudents = students.filter((s) => s.status === "Active").length
-  const totalRevenue = students.reduce((sum, s) => sum + (s.paid_amount || 0), 0)
-  const pendingAmount = students.reduce((sum, s) => sum + (s.total_fee - (s.paid_amount || 0)), 0)
+async function updateDashboardStats() {
+  try {
+    const response = await apiCall("/stats")
+    const stats = response.data
 
-  document.getElementById("totalStudents").textContent = totalStudents
-  document.getElementById("totalRevenue").textContent = `₹${totalRevenue.toLocaleString()}`
-  document.getElementById("pendingAmount").textContent = `₹${pendingAmount.toLocaleString()}`
-  document.getElementById("totalCourses").textContent = courses.length
+    document.getElementById("totalStudents").textContent = stats.total_students
+    document.getElementById("totalRevenue").textContent = `₹${stats.total_revenue.toLocaleString()}`
+    document.getElementById("pendingAmount").textContent = `₹${stats.pending_amount.toLocaleString()}`
+    document.getElementById("totalCourses").textContent = stats.total_courses
+  } catch (error) {
+    console.error("Error loading dashboard stats:", error)
+    showToast("Error loading dashboard stats", "error")
+  }
 }
 
 function updateRecentStudentsTable() {
   const tbody = document.querySelector("#recentStudentsTable tbody")
+  if (!tbody) return
   tbody.innerHTML = ""
 
-  if (students.length === 0) {
+  if (!recentStudentsAll || recentStudentsAll.length === 0) {
     tbody.innerHTML = `
-            <tr>
-                <td colspan="6" class="empty-state">
-                    <i class="fas fa-users"></i>
-                    <p>No students found. Add your first student to get started!</p>
-                </td>
-            </tr>
-        `
+      <tr>
+        <td colspan="6" class="empty-state">
+          <i class="fas fa-users"></i>
+          <p>No students found. Add your first student to get started!</p>
+        </td>
+      </tr>
+    `
+    updateRecentStudentsPagination(0)
     return
   }
 
-  const recentStudents = students.slice(0, 5)
-  recentStudents.forEach((student) => {
-    const row = createStudentRow(student, true)
+  const total = recentStudentsAll.length
+  const totalPages = Math.max(1, Math.ceil(total / recentStudentsPageSize))
+  if (recentStudentsPage > totalPages) recentStudentsPage = totalPages
+
+  const start = (recentStudentsPage - 1) * recentStudentsPageSize
+  const pageItems = recentStudentsAll.slice(start, start + recentStudentsPageSize)
+
+  pageItems.forEach((student) => {
+    // Build row specifically for dashboard columns to avoid mismatch errors with createStudentRow
+    const row = document.createElement("tr")
+    const phone = student.phone || ""
+    const enrolled = student.enrollment_date ? new Date(student.enrollment_date).toLocaleDateString() : ""
+    const father = student.father || ""
+    const course = student.course || ""
+
+    row.innerHTML = `
+      <td>${student.name || ""}</td>
+      <td>${phone}</td>
+      <td>${enrolled}</td>
+      <td>${father}</td>
+      <td>${course}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-sm btn-outline" onclick="openPaymentModal('${student._id}')">
+            <i class="fas fa-credit-card"></i> Pay
+          </button>
+          <button class="btn btn-sm btn-outline" onclick="confirmDeleteStudent('${student._id}')">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+        </div>
+      </td>
+    `
     tbody.appendChild(row)
   })
+
+  updateRecentStudentsPagination(totalPages)
 }
 
-// Student Management
-async function loadStudents() {
+function updateRecentStudentsPagination(totalPages) {
+  let paginationDiv = document.getElementById("recentStudentsPagination")
+  if (!paginationDiv) {
+    // table container has it in HTML; but ensure exists for safety
+    paginationDiv = document.createElement("div")
+    paginationDiv.id = "recentStudentsPagination"
+    paginationDiv.className = "pagination-controls"
+    const parent = document.querySelector("#recentStudentsTable")?.parentElement
+    if (parent) parent.appendChild(paginationDiv)
+  }
+
+  if (!totalPages || totalPages < 1) {
+    paginationDiv.innerHTML = ""
+    return
+  }
+
+  paginationDiv.innerHTML = `
+    <button class="btn btn-sm" ${recentStudentsPage === 1 ? "disabled" : ""} onclick="(function(){ recentStudentsPage = Math.max(1, recentStudentsPage - 1); updateRecentStudentsTable(); })()">
+      Prev
+    </button>
+    <span>Page ${recentStudentsPage} of ${totalPages}</span>
+    <button class="btn btn-sm" ${recentStudentsPage >= totalPages ? "disabled" : ""} onclick="(function(){ recentStudentsPage = Math.min(${totalPages}, recentStudentsPage + 1); updateRecentStudentsTable(); })()">
+      Next
+    </button>
+  `
+}
+
+function updateStudentsTableLegacy() {
+  // Legacy no-op: call the main implementation if present
+  if (typeof updateStudentsTable === "function") {
+    updateStudentsTable()
+  }
+}
+
+// New pagination variables
+let studentsPage = 1
+const studentsPageSize = 25
+let studentsTotal = 0
+
+// New loadStudents function
+async function loadStudents(page = 1) {
   try {
     showLoading(true)
-    const response = await apiCall("/students")
+    const response = await apiCall(`/students?page=${page}&page_size=${studentsPageSize}`)
     students = response.data || []
+    studentsTotal = response.total || 0
+    studentsPage = response.page || 1
+
     updateStudentsTable()
+    updateStudentsPagination()
   } catch (error) {
     console.error("Error loading students:", error)
     showToast("Error loading students", "error")
@@ -486,28 +597,45 @@ async function loadStudents() {
   }
 }
 
+// Update table (no slicing here, backend already paginates)
 function updateStudentsTable() {
   const tbody = document.querySelector("#studentsTable tbody")
   tbody.innerHTML = ""
 
-  const filteredStudents = getFilteredStudents()
-
-  if (filteredStudents.length === 0) {
+  if (students.length === 0) {
     tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="empty-state">
-                    <i class="fas fa-users"></i>
-                    <p>No students found</p>
-                </td>
-            </tr>
-        `
+      <tr>
+        <td colspan="8" class="empty-state">
+          <i class="fas fa-users"></i>
+          <p>No students found</p>
+        </td>
+      </tr>
+    `
     return
   }
 
-  filteredStudents.forEach((student) => {
+  students.forEach((student) => {
     const row = createStudentRow(student, false)
     tbody.appendChild(row)
   })
+}
+
+// New pagination controls
+function updateStudentsPagination() {
+  const totalPages = Math.ceil(studentsTotal / studentsPageSize)
+  let paginationDiv = document.getElementById("studentsPagination")
+  if (!paginationDiv) {
+    paginationDiv = document.createElement("div")
+    paginationDiv.id = "studentsPagination"
+    paginationDiv.className = "pagination-controls"
+    document.querySelector("#studentsTable").parentElement.appendChild(paginationDiv)
+  }
+
+  paginationDiv.innerHTML = `
+    <button class="btn btn-sm" ${studentsPage === 1 ? "disabled" : ""} onclick="loadStudents(${studentsPage - 1})">Prev</button>
+    <span>Page ${studentsPage} of ${totalPages}</span>
+    <button class="btn btn-sm" ${studentsPage >= totalPages ? "disabled" : ""} onclick="loadStudents(${studentsPage + 1})">Next</button>
+  `
 }
 
 function createStudentRow(student, isRecent = false) {
@@ -517,12 +645,12 @@ function createStudentRow(student, isRecent = false) {
   // Calculate status
   let status = student.status
   // Find course duration in months
-  const course = courses.find(c => c.name === student.course)
+  const course = courses.find((c) => c.name === student.course)
   let courseMonths = 0
   if (course && course.duration) {
     // Extract number from duration string (e.g., '6 months')
     const match = course.duration.match(/(\d+)/)
-    if (match) courseMonths = parseInt(match[1], 10)
+    if (match) courseMonths = Number.parseInt(match[1], 10)
   }
   // Calculate end date
   let endDate = null
@@ -544,18 +672,23 @@ function createStudentRow(student, isRecent = false) {
   const statusBadge = getStatusBadge(status)
   const feeBadge = balance > 0 ? "badge-danger" : "badge-success"
 
-  const discountBadge = student.discount && student.discount > 0 ? '<span class="badge badge-warning">Discounted</span>' : ''
+  const discountBadge =
+    student.discount && student.discount > 0 ? '<span class="badge badge-warning">Discounted</span>' : ""
 
   const columns = [
     student.name,
-    student.phone || '',
-    student.dob ? new Date(student.dob).toLocaleDateString() : '',
-    student.father || '',
+    student.phone || "",
+    student.dob ? new Date(student.dob).toLocaleDateString() : "",
+    student.father || "",
     student.course,
-    ...(isRecent ? [] : [`\u20b9${student.total_fee} ${discountBadge}`, `\u20b9${student.paid_amount || 0}`, `\u20b9${balance}`]),
+    ...(isRecent
+      ? []
+      : [`\u20b9${student.total_fee} ${discountBadge}`, `\u20b9${student.paid_amount || 0}`, `\u20b9${balance}`]),
     new Date(student.enrollment_date).toLocaleDateString(),
     `<span class="badge ${statusBadge}">${status}</span>`,
-    ...(isRecent ? [`<span class="badge ${feeBadge}">\u20b9${student.paid_amount || 0}/\u20b9${student.total_fee}</span>`] : []),
+    ...(isRecent
+      ? [`<span class="badge ${feeBadge}">\u20b9${student.paid_amount || 0}/\u20b9${student.total_fee}</span>`]
+      : []),
     `
             <div class="flex gap-2">
                 ${
@@ -570,20 +703,30 @@ function createStudentRow(student, isRecent = false) {
                 <button class="btn btn-sm btn-outline" onclick="generateReceipt('${student._id}')">
                     <i class="fas fa-file-pdf"></i> Receipt
                 </button>
-                ${status === "Dropped" ? `
-                <button class="btn btn-sm btn-outline" style="color: var(--success-color); border-color: var(--success-color);" onclick="markAsActive('${student._id}')">
-                    <i class="fas fa-user-check"></i> Activate
+                 ${
+                   status === "Dropped"
+                     ? `
+                <button class="btn btn-sm btn-outline" style="color: var(--success-color); border-color: var(--success-color);" onclick="markAsUndropped('${student._id}')">
+                <i class="fas fa-user-check"></i> Undrop
                 </button>
-                ` : status !== "Dropped" ? `
+                      `
+                     : `
                 <button class="btn btn-sm btn-outline" style="color: var(--warning-color); border-color: var(--warning-color);" onclick="markAsDropped('${student._id}')">
-                    <i class="fas fa-user-times"></i> Drop
+                <i class="fas fa-user-times"></i> Drop
                 </button>
-                ` : ''}
-                ${currentUser && currentUser.role === "admin" ? `
+                  `
+                 }
+
+
+                ${
+                  currentUser && currentUser.role === "admin"
+                    ? `
                 <button class="btn btn-sm btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" onclick="confirmDeleteStudent('${student._id}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
-                ` : ''}
+                `
+                    : ""
+                }
             </div>
         `,
   ]
@@ -618,14 +761,14 @@ function getFilteredStudents() {
       student.name.toLowerCase().includes(searchTerm) ||
       (student.phone && student.phone.toLowerCase().includes(searchTerm)) ||
       (student.father && student.father.toLowerCase().includes(searchTerm))
-    
+
     // Calculate actual status (same logic as in createStudentRow)
     let actualStatus = student.status
-    const course = courses.find(c => c.name === student.course)
+    const course = courses.find((c) => c.name === student.course)
     let courseMonths = 0
     if (course && course.duration) {
       const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = parseInt(match[1], 10)
+      if (match) courseMonths = Number.parseInt(match[1], 10)
     }
     let endDate = null
     if (student.enrollment_date && courseMonths > 0) {
@@ -642,7 +785,7 @@ function getFilteredStudents() {
     } else {
       actualStatus = "Active"
     }
-    
+
     const matchesBranch = branchFilter === "all" || student.branch === branchFilter
     const matchesStatus = statusFilter === "all" || actualStatus === statusFilter
     const matchesCourse = courseFilter === "all" || student.course === courseFilter
@@ -690,10 +833,10 @@ function openAddStudentModal() {
 async function handleAddStudent(e) {
   e.preventDefault()
 
-  const discountValue = parseFloat(document.getElementById("studentDiscount").value) || 0
+  const discountValue = Number.parseFloat(document.getElementById("studentDiscount").value) || 0
   const selectedCourseName = document.getElementById("studentCourse").value
-  const selectedCourse = courses.find(c => c.name === selectedCourseName)
-  let courseFee = selectedCourse ? selectedCourse.fee : 0
+  const selectedCourse = courses.find((c) => c.name === selectedCourseName)
+  const courseFee = selectedCourse ? selectedCourse.fee : 0
   let discountedFee = courseFee - discountValue
   if (discountedFee < 0) discountedFee = 0
 
@@ -706,7 +849,7 @@ async function handleAddStudent(e) {
     branch: document.getElementById("studentBranch").value,
     enrollment_date: document.getElementById("enrollmentDate").value,
     discount: discountValue,
-    total_fee: discountedFee
+    total_fee: discountedFee,
   }
 
   if (!formData.name || !formData.father || !formData.dob || !formData.course) {
@@ -871,9 +1014,13 @@ function updateUsersTable() {
             <td><span class="badge ${user.role === "admin" ? "badge-success" : "badge-secondary"}">${user.role}</span></td>
             <td>${new Date(user.created_at).toLocaleDateString()}</td>
             <td>
-                ${currentUser && currentUser.role === "admin" ? `<button class="btn btn-sm btn-outline" onclick="editUser('${user._id}')">
+                ${
+                  currentUser && currentUser.role === "admin"
+                    ? `<button class="btn btn-sm btn-outline" onclick="editUser('${user._id}')">
                     <i class="fas fa-edit"></i> Edit
-                </button>` : ""}
+                </button>`
+                    : ""
+                }
             </td>
         `
     tbody.appendChild(row)
@@ -923,18 +1070,43 @@ async function handleAddUser(e) {
 }
 
 // Payment Management
-async function loadPayments() {
+let paymentsPage = 1
+const paymentsPageSize = 25
+let paymentsTotal = 0
+
+async function loadPayments(page = 1) {
   try {
     showLoading(true)
-    const response = await apiCall("/payments")
+    const response = await apiCall(`/payments?page=${page}&page_size=${paymentsPageSize}`)
     payments = response.data || []
+    paymentsTotal = response.total || 0
+    paymentsPage = response.page || 1
+
     updatePaymentsTable()
+    updatePaymentsPagination()
   } catch (error) {
     console.error("Error loading payments:", error)
     showToast("Error loading payments", "error")
   } finally {
     showLoading(false)
   }
+}
+
+function updatePaymentsPagination() {
+  const totalPages = Math.ceil(paymentsTotal / paymentsPageSize)
+  let paginationDiv = document.getElementById("paymentsPagination")
+  if (!paginationDiv) {
+    paginationDiv = document.createElement("div")
+    paginationDiv.id = "paymentsPagination"
+    paginationDiv.className = "pagination-controls"
+    document.querySelector("#paymentsTable").parentElement.appendChild(paginationDiv)
+  }
+
+  paginationDiv.innerHTML = `
+    <button class="btn btn-sm" ${paymentsPage === 1 ? "disabled" : ""} onclick="loadPayments(${paymentsPage - 1})">Prev</button>
+    <span>Page ${paymentsPage} of ${totalPages}</span>
+    <button class="btn btn-sm" ${paymentsPage >= totalPages ? "disabled" : ""} onclick="loadPayments(${paymentsPage + 1})">Next</button>
+  `
 }
 
 function updatePaymentsTable() {
@@ -1088,9 +1260,9 @@ async function handlePayment(e) {
 
 // Reports
 function loadReports() {
-  const activeStudents = students.filter(s => s.status !== "Dropped")
-  const droppedStudents = students.filter(s => s.status === "Dropped")
-  
+  const activeStudents = students.filter((s) => s.status !== "Dropped")
+  const droppedStudents = students.filter((s) => s.status === "Dropped")
+
   const totalExpected = activeStudents.reduce((sum, s) => sum + s.total_fee, 0)
   const totalCollected = activeStudents.reduce((sum, s) => sum + (s.paid_amount || 0), 0)
   const outstanding = totalExpected - totalCollected
@@ -1104,7 +1276,9 @@ function loadReports() {
   document.getElementById("droppedStudentsFees").textContent = `₹${droppedStudentsFees.toLocaleString()}`
 
   document.getElementById("reportTotalStudents").textContent = students.length
-  document.getElementById("reportActiveStudents").textContent = activeStudents.filter((s) => s.status === "Active").length
+  document.getElementById("reportActiveStudents").textContent = activeStudents.filter(
+    (s) => s.status === "Active",
+  ).length
   document.getElementById("reportTotalPayments").textContent = payments.length
 }
 
@@ -1114,8 +1288,8 @@ function generateReceipt(studentId) {
   if (!student) return
 
   const { jsPDF } = window.jspdf
-  const doc = new jsPDF('p', 'mm', 'a4')
-  
+  const doc = new jsPDF("p", "mm", "a4")
+
   // Set page to half A4 size (A5)
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight() / 2
@@ -1123,26 +1297,25 @@ function generateReceipt(studentId) {
   // Header with logo
   doc.setFontSize(16)
   doc.setTextColor(220, 38, 38) // Red color
-  
+
   // Add logo image with proper async loading
   const img = new Image()
-  img.crossOrigin = "anonymous"
-  img.onload = function() {
-    doc.addImage(img, 'JPEG', 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
+  img.onload = () => {
+    doc.addImage(img, "JPEG", 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
   }
-  img.onerror = function() {
+  img.onerror = () => {
     // Fallback to placeholder if image fails to load
     doc.setFillColor(220, 38, 38)
-    doc.circle(20, 15, 4, 'F')
+    doc.circle(20, 15, 4, "F")
   }
-  img.src = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/gurukulss.jpg-ycKYkXo4bqCjVFFNW3RKOduvoFRNw9.jpeg'
-  
+  img.src = "gurukulss.jpg"
+
   // Institute name with logo
-  doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth/2, 15, { align: "center" })
+  doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth / 2, 15, { align: "center" })
 
   doc.setFontSize(12)
   doc.setTextColor(31, 41, 55)
-  doc.text("Fee Payment Receipt", pageWidth/2, 25, { align: "center" })
+  doc.text("Fee Payment Receipt", pageWidth / 2, 25, { align: "center" })
 
   // Receipt details
   doc.setFontSize(9)
@@ -1163,47 +1336,50 @@ function generateReceipt(studentId) {
       ...(student.discount && student.discount > 0 ? [["Discount", `\u20b9${student.discount}`]] : []),
       ["Paid Amount", `\u20b9${student.paid_amount || 0}`],
       ["Balance", `\u20b9${student.total_fee - (student.paid_amount || 0)}`],
-      ["Status", (function() {
-        // Use the same status logic as in the table
-        let status = student.status
-        const course = courses.find(c => c.name === student.course)
-        let courseMonths = 0
-        if (course && course.duration) {
-          const match = course.duration.match(/(\d+)/)
-          if (match) courseMonths = parseInt(match[1], 10)
-        }
-        let endDate = null
-        if (student.enrollment_date && courseMonths > 0) {
-          const enrollDate = new Date(student.enrollment_date)
-          endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-        }
-        const today = new Date()
-        if (student.status === "Dropped") {
-          status = "Dropped"
-        } else if ((student.paid_amount || 0) >= student.total_fee) {
-          status = "Completed"
-        } else if (endDate && today > endDate) {
-          status = "Inactive"
-        } else {
-          status = "Active"
-        }
-        return status
-      })()],
+      [
+        "Status",
+        (() => {
+          // Use the same status logic as in the table
+          let status = student.status
+          const course = courses.find((c) => c.name === student.course)
+          let courseMonths = 0
+          if (course && course.duration) {
+            const match = course.duration.match(/(\d+)/)
+            if (match) courseMonths = Number.parseInt(match[1], 10)
+          }
+          let endDate = null
+          if (student.enrollment_date && courseMonths > 0) {
+            const enrollDate = new Date(student.enrollment_date)
+            endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
+          }
+          const today = new Date()
+          if ((student.paid_amount || 0) >= student.total_fee) {
+            status = "Completed"
+          } else if (endDate && today > endDate) {
+            status = "Inactive"
+          } else {
+            status = "Active"
+          }
+          return status
+        })(),
+      ],
       ["Enrollment Date", new Date(student.enrollment_date).toLocaleDateString()],
     ],
     theme: "grid",
     headStyles: { fillColor: [220, 38, 38] }, // Red
     styles: { fontSize: 8 },
     columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 110 } },
-    margin: { top: 5, right: 10, bottom: 5, left: 10 }
+    margin: { top: 5, right: 10, bottom: 5, left: 10 },
   })
 
   // Footer
   doc.setFontSize(8)
   doc.setTextColor(107, 114, 128)
-  doc.text(`Generated by: ${currentUser ? currentUser.username : "N/A"}`, pageWidth/2, pageHeight - 15, { align: "center" })
-  doc.text("Thank you for choosing Gurukul Computer Institute!", pageWidth/2, pageHeight - 10, { align: "center" })
-  doc.text("This is a computer generated receipt.", pageWidth/2, pageHeight - 5, { align: "center" })
+  doc.text(`Generated by: ${currentUser ? currentUser.username : "N/A"}`, pageWidth / 2, pageHeight - 15, {
+    align: "center",
+  })
+  doc.text("Thank you for choosing Gurukul Computer Institute!", pageWidth / 2, pageHeight - 10, { align: "center" })
+  doc.text("This is a computer generated receipt.", pageWidth / 2, pageHeight - 5, { align: "center" })
 
   doc.save(`receipt-${student.name.replace(/\s+/g, "-")}.pdf`)
   showToast("Receipt downloaded successfully!", "success")
@@ -1211,8 +1387,8 @@ function generateReceipt(studentId) {
 
 function generatePaymentReceipt(payment) {
   const { jsPDF } = window.jspdf
-  const doc = new jsPDF('p', 'mm', 'a4')
-  
+  const doc = new jsPDF("p", "mm", "a4")
+
   // Set page to half A4 size (A5)
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight() / 2
@@ -1220,26 +1396,25 @@ function generatePaymentReceipt(payment) {
   // Header with logo
   doc.setFontSize(16)
   doc.setTextColor(220, 38, 38) // Red color
-  
+
   // Add logo image with proper async loading
   const img = new Image()
-  img.crossOrigin = "anonymous"
-  img.onload = function() {
-    doc.addImage(img, 'JPEG', 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
+  img.onload = () => {
+    doc.addImage(img, "JPEG", 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
   }
-  img.onerror = function() {
+  img.onerror = () => {
     // Fallback to placeholder if image fails to load
     doc.setFillColor(220, 38, 38)
-    doc.circle(20, 15, 4, 'F')
+    doc.circle(20, 15, 4, "F")
   }
-  img.src = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/gurukulss.jpg-ycKYkXo4bqCjVFFNW3RKOduvoFRNw9.jpeg'
-  
+  img.src = "gurukulss.jpg"
+
   // Institute name with logo
-  doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth/2, 15, { align: "center" })
+  doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth / 2, 15, { align: "center" })
 
   doc.setFontSize(12)
   doc.setTextColor(31, 41, 55)
-  doc.text("Payment Receipt", pageWidth/2, 25, { align: "center" })
+  doc.text("Payment Receipt", pageWidth / 2, 25, { align: "center" })
 
   // Receipt details
   doc.setFontSize(9)
@@ -1254,7 +1429,7 @@ function generatePaymentReceipt(payment) {
     body: [
       ["Student Name", payment.student_name],
       ["Amount Paid", `\u20b9${payment.amount}`],
-      ["Fee Type", payment.fee_type ? payment.fee_type.replace(/([A-Z])/g, ' $1').trim() : "N/A"],
+      ["Fee Type", payment.fee_type ? payment.fee_type.replace(/([A-Z])/g, " $1").trim() : "N/A"],
       ["Payment Method", payment.payment_method.replace("_", " ")],
       ["Receipt Number", payment.receipt_number],
       ["Payment Date", new Date(payment.payment_date).toLocaleDateString()],
@@ -1265,15 +1440,17 @@ function generatePaymentReceipt(payment) {
     headStyles: { fillColor: [220, 38, 38] }, // Red
     styles: { fontSize: 8 },
     columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 110 } },
-    margin: { top: 5, right: 10, bottom: 5, left: 10 }
+    margin: { top: 5, right: 10, bottom: 5, left: 10 },
   })
 
   // Footer
   doc.setFontSize(8)
   doc.setTextColor(107, 114, 128)
-  doc.text(`Generated by: ${currentUser ? currentUser.username : "N/A"}`, pageWidth/2, pageHeight - 15, { align: "center" })
-  doc.text("Thank you for your payment!", pageWidth/2, pageHeight - 10, { align: "center" })
-  doc.text("This is a computer generated receipt.", pageWidth/2, pageHeight - 5, { align: "center" })
+  doc.text(`Generated by: ${currentUser ? currentUser.username : "N/A"}`, pageWidth / 2, pageHeight - 15, {
+    align: "center",
+  })
+  doc.text("Thank you for your payment!", pageWidth / 2, pageHeight - 10, { align: "center" })
+  doc.text("This is a computer generated receipt.", pageWidth / 2, pageHeight - 5, { align: "center" })
 
   doc.save(`payment-receipt-${payment.receipt_number}.pdf`)
 }
@@ -1293,11 +1470,11 @@ function exportReport() {
   const tableData = students.map((student) => {
     // Calculate actual status (same logic as in createStudentRow)
     let actualStatus = student.status
-    const course = courses.find(c => c.name === student.course)
+    const course = courses.find((c) => c.name === student.course)
     let courseMonths = 0
     if (course && course.duration) {
       const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = parseInt(match[1], 10)
+      if (match) courseMonths = Number.parseInt(match[1], 10)
     }
     let endDate = null
     if (student.enrollment_date && courseMonths > 0) {
@@ -1305,9 +1482,7 @@ function exportReport() {
       endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
     }
     const today = new Date()
-    if (student.status === "Dropped") {
-      actualStatus = "Dropped"
-    } else if ((student.paid_amount || 0) >= student.total_fee) {
+    if ((student.paid_amount || 0) >= student.total_fee) {
       actualStatus = "Completed"
     } else if (endDate && today > endDate) {
       actualStatus = "Inactive"
@@ -1374,7 +1549,7 @@ function editCourse(courseId) {
 }
 
 function editUser(userId) {
-  const user = users.find(u => u._id === userId)
+  const user = users.find((u) => u._id === userId)
   if (!user) return
   editingUserId = userId
   document.getElementById("editUsername").value = user.username
@@ -1397,7 +1572,7 @@ async function handleEditUser(e) {
     if (password) body.password = password
     const response = await apiCall(`/users/${editingUserId}`, {
       method: "PUT",
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     })
     if (response.success) {
       showToast("User updated successfully!", "success")
@@ -1424,7 +1599,7 @@ async function deleteUser(userId) {
   try {
     showLoading(true)
     const response = await apiCall(`/users/${userId}`, {
-      method: "DELETE"
+      method: "DELETE",
     })
     if (response.success) {
       showToast("User deleted successfully!", "success")
@@ -1448,7 +1623,7 @@ function downloadPaymentReceipt(paymentId) {
   }
 }
 
-window.confirmDeleteStudent = function(studentId) {
+window.confirmDeleteStudent = (studentId) => {
   if (confirm("Are you sure you want to delete this student? This action cannot be undone.")) {
     deleteStudent(studentId)
   }
@@ -1458,7 +1633,7 @@ async function deleteStudent(studentId) {
   try {
     showLoading(true)
     const response = await apiCall(`/students/${studentId}`, {
-      method: "DELETE"
+      method: "DELETE",
     })
     if (response.success) {
       showToast("Student deleted successfully!", "success")
@@ -1477,16 +1652,16 @@ async function deleteStudent(studentId) {
 
 // Download functions
 function downloadStudentsByStatus(status) {
-  const filteredStudents = students.filter(student => {
+  const filteredStudents = students.filter((student) => {
     if (status === "all") return true
-    
+
     // Calculate actual status
     let actualStatus = student.status
-    const course = courses.find(c => c.name === student.course)
+    const course = courses.find((c) => c.name === student.course)
     let courseMonths = 0
     if (course && course.duration) {
       const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = parseInt(match[1], 10)
+      if (match) courseMonths = Number.parseInt(match[1], 10)
     }
     let endDate = null
     if (student.enrollment_date && courseMonths > 0) {
@@ -1503,10 +1678,10 @@ function downloadStudentsByStatus(status) {
     } else {
       actualStatus = "Active"
     }
-    
+
     return actualStatus === status
   })
-  
+
   generateStudentsPDF(filteredStudents, status)
 }
 
@@ -1525,11 +1700,11 @@ function generateStudentsPDF(studentsList, status) {
   const tableData = studentsList.map((student) => {
     // Calculate actual status
     let actualStatus = student.status
-    const course = courses.find(c => c.name === student.course)
+    const course = courses.find((c) => c.name === student.course)
     let courseMonths = 0
     if (course && course.duration) {
       const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = parseInt(match[1], 10)
+      if (match) courseMonths = Number.parseInt(match[1], 10)
     }
     let endDate = null
     if (student.enrollment_date && courseMonths > 0) {
@@ -1573,15 +1748,14 @@ function generateStudentsPDF(studentsList, status) {
 }
 
 // Mark student as dropped
-window.markAsDropped = function(studentId) {
-  if (confirm("Are you sure you want to mark this student as dropped? This action can be reversed later.")) {
+window.markAsDropped = (studentId) => {
+  if (confirm("Are you sure you want to mark this student as dropped? This action cannot be undone.")) {
     updateStudentStatus(studentId, "Dropped")
   }
 }
-
-// NEW FUNCTION: Mark student as active (undrop)
-window.markAsActive = function(studentId) {
-  if (confirm("Are you sure you want to reactivate this student? This will change their status from Dropped to Active.")) {
+// Mark student as undropped (Active)
+window.markAsUndropped = (studentId) => {
+  if (confirm("Are you sure you want to mark this student as active again?")) {
     updateStudentStatus(studentId, "Active")
   }
 }
@@ -1594,8 +1768,7 @@ async function updateStudentStatus(studentId, status) {
       body: JSON.stringify({ status: status }),
     })
     if (response.success) {
-      const actionText = status === "Active" ? "reactivated" : status.toLowerCase()
-      showToast(`Student ${actionText} successfully!`, "success")
+      showToast(`Student marked as ${status.toLowerCase()} successfully!`, "success")
       loadStudents()
       loadDashboardData()
     } else {
@@ -1612,13 +1785,13 @@ async function updateStudentStatus(studentId, status) {
 // Update download buttons visibility based on status filter
 function updateDownloadButtons() {
   const statusFilter = document.getElementById("statusFilter")?.value || "all"
-  
+
   // Hide all download buttons first
   document.getElementById("downloadActiveStudents").style.display = "none"
   document.getElementById("downloadInactiveStudents").style.display = "none"
   document.getElementById("downloadCompletedStudents").style.display = "none"
   document.getElementById("downloadDroppedStudents").style.display = "none"
-  
+
   // Show relevant button based on filter
   if (statusFilter !== "all") {
     document.getElementById(`download${statusFilter}Students`).style.display = "inline-block"
@@ -1632,3 +1805,4 @@ style.textContent = `
     .font-mono { font-family: 'Courier New', monospace; }
 `
 document.head.appendChild(style)
+
