@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body>s
+<body>
     <!-- Login Page -->
     <div id="loginPage" class="page active">
         <div class="login-container">
@@ -120,9 +120,16 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Recent Students</h2>
-                    <button id="refreshDashboard" class="btn btn-outline btn-sm">
-                        <i class="fas fa-refresh"></i> Refresh
-                    </button>
+                    <div class="header-actions">
+                        <select id="recentStudentsPageSize" class="filter-select" style="width:auto">
+                            <option value="5">5 / page</option>
+                            <option value="10">10 / page</option>
+                            <option value="20">20 / page</option>
+                        </select>
+                        <button id="refreshDashboard" class="btn btn-outline btn-sm">
+                            <i class="fas fa-refresh"></i> Refresh
+                        </button>
+                    </div>
                 </div>
                 <div class="card-content">
                     <div class="table-container">
@@ -146,6 +153,7 @@
                                 </tr>
                             </tbody>
                         </table>
+                        <div id="recentStudentsPagination" class="pagination-controls"></div>
                     </div>
                 </div>
             </div>
@@ -253,6 +261,7 @@
                             </thead>
                             <tbody></tbody>
                         </table>
+                        <div id="paymentsPagination" class="pagination-controls"></div>
                     </div>
                 </div>
             </div>
@@ -282,6 +291,7 @@
                             </thead>
                             <tbody></tbody>
                         </table>
+                        <div id="coursesPagination" class="pagination-controls"></div>
                     </div>
                 </div>
             </div>
@@ -377,63 +387,62 @@
     </div>
 
     <!-- Add Student Modal -->
-<div id="addStudentModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Add New Student</h2>
-            <button class="modal-close">&times;</button>
+    <div id="addStudentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Student</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="addStudentForm">
+                <div class="form-group">
+                    <label for="studentName">Full Name *</label>
+                    <input type="text" id="studentName" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentFather">Father's Name *</label>
+                    <input type="text" id="studentFather" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentPhone">Phone</label>
+                    <input type="tel" id="studentPhone">
+                </div>
+                <div class="form-group">
+                    <label for="studentDOB">DOB *</label>
+                    <input type="date" id="studentDOB" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="studentCourse">Course *</label>
+                        <select id="studentCourse" required>
+                            <option value="">Select a course</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="studentBranch">Branch *</label>
+                        <select id="studentBranch" required>
+                            <option value="">Select branch</option>
+                            <option value="Raebareli">Raebareli</option>
+                            <option value="Lalganj">Lalganj</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="enrollmentDate">Enrollment Date</label>
+                    <input type="date" id="enrollmentDate">
+                </div>
+                <div class="form-group">
+                    <label for="studentDiscount">Discount (optional)</label>
+                    <input type="number" id="studentDiscount" min="0" step="0.01" placeholder="Enter discount amount">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('addStudentModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Student
+                    </button>
+                </div>
+            </form>
         </div>
-        <form id="addStudentForm">
-            <div class="form-group">
-                <label for="studentName">Full Name *</label>
-                <input type="text" id="studentName" required>
-            </div>
-            <div class="form-group">
-                <label for="studentFather">Father's Name *</label>
-                <input type="text" id="studentFather" required>
-            </div>
-            <div class="form-group">
-                <label for="studentPhone">Phone</label>
-                <input type="tel" id="studentPhone">
-            </div>
-            <div class="form-group">
-                <label for="studentDOB">DOB *</label>
-                <input type="date" id="studentDOB" required>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="studentCourse">Course *</label>
-                    <select id="studentCourse" required>
-                        <option value="">Select a course</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="studentBranch">Branch *</label>
-                    <select id="studentBranch" required>
-                        <option value="">Select branch</option>
-                        <option value="Raebareli">Raebareli</option>
-                        <option value="Lalganj">Lalganj</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="enrollmentDate">Enrollment Date</label>
-                <input type="date" id="enrollmentDate">
-            </div>
-            <div class="form-group">
-                <label for="studentDiscount">Discount (optional)</label>
-                <input type="number" id="studentDiscount" min="0" step="0.01" placeholder="Enter discount amount">
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="closeModal('addStudentModal')">Cancel</button>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Student
-                </button>
-            </div>
-        </form>
     </div>
-</div>
-
 
     <!-- Add Course Modal -->
     <div id="addCourseModal" class="modal">
@@ -608,3 +617,4 @@
     <script src="script.js"></script>
 </body>
 </html>
+
