@@ -1,6 +1,6 @@
 // Configuration
-const API_BASE = "https://institute-management-backend-3mtt.onrender.com/api"
-//const API_BASE = "/api";
+//const API_BASE = "/api"
+const API_BASE = "http://localhost:5000/api"
 
 // Global State
 let currentUser = null
@@ -474,8 +474,8 @@ async function updateDashboardStats() {
     const stats = response.data
 
     document.getElementById("totalStudents").textContent = stats.total_students
-    document.getElementById("totalRevenue").textContent = `₹${stats.total_revenue.toLocaleString()}`
-    document.getElementById("pendingAmount").textContent = `₹${stats.pending_amount.toLocaleString()}`
+    document.getElementById("totalRevenue").textContent = `₹${(stats.total_revenue || 0).toLocaleString()}`
+    document.getElementById("pendingAmount").textContent = `₹${(stats.total_pending || 0).toLocaleString()}`
     document.getElementById("totalCourses").textContent = stats.total_courses
   } catch (error) {
     console.error("Error loading dashboard stats:", error)
@@ -524,10 +524,10 @@ function updateRecentStudentsTable() {
       <td>${course}</td>
       <td>
         <div class="flex gap-2">
-          <button class="btn btn-sm btn-outline" onclick="openPaymentModal('${student._id}')">
+          <button class="btn btn-sm btn-outline" onclick="openPaymentModal('${student.id}')">
             <i class="fas fa-credit-card"></i> Pay
           </button>
-          <button class="btn btn-sm btn-outline" onclick="confirmDeleteStudent('${student._id}')">
+          <button class="btn btn-sm btn-outline" onclick="confirmDeleteStudent('${student.id}')">
             <i class="fas fa-trash"></i> Delete
           </button>
         </div>
@@ -681,37 +681,33 @@ function createStudentRow(student, isRecent = false) {
     student.dob ? new Date(student.dob).toLocaleDateString() : "",
     student.father || "",
     student.course,
-    ...(isRecent
-      ? []
-      : [`\u20b9${student.total_fee} ${discountBadge}`, `\u20b9${student.paid_amount || 0}`, `\u20b9${balance}`]),
+    ...(isRecent ? [] : [`₹${student.total_fee} ${discountBadge}`, `₹${student.paid_amount || 0}`, `₹${balance}`]),
     new Date(student.enrollment_date).toLocaleDateString(),
     `<span class="badge ${statusBadge}">${status}</span>`,
-    ...(isRecent
-      ? [`<span class="badge ${feeBadge}">\u20b9${student.paid_amount || 0}/\u20b9${student.total_fee}</span>`]
-      : []),
+    ...(isRecent ? [`<span class="badge ${feeBadge}">₹${student.paid_amount || 0}/₹${student.total_fee}</span>`] : []),
     `
             <div class="flex gap-2">
                 ${
                   balance > 0 && status !== "Dropped"
                     ? `
-                    <button class="btn btn-sm btn-primary" onclick="openPaymentModal('${student._id}')">
+                    <button class="btn btn-sm btn-primary" onclick="openPaymentModal('${student.id}')">
                         <i class="fas fa-credit-card"></i> Pay
                     </button>
                 `
                     : ""
                 }
-                <button class="btn btn-sm btn-outline" onclick="generateReceipt('${student._id}')">
+                <button class="btn btn-sm btn-outline" onclick="generateReceipt('${student.id}')">
                     <i class="fas fa-file-pdf"></i> Receipt
                 </button>
                  ${
                    status === "Dropped"
                      ? `
-                <button class="btn btn-sm btn-outline" style="color: var(--success-color); border-color: var(--success-color);" onclick="markAsUndropped('${student._id}')">
+                <button class="btn btn-sm btn-outline" style="color: var(--success-color); border-color: var(--success-color);" onclick="markAsUndropped('${student.id}')">
                 <i class="fas fa-user-check"></i> Undrop
                 </button>
                       `
                      : `
-                <button class="btn btn-sm btn-outline" style="color: var(--warning-color); border-color: var(--warning-color);" onclick="markAsDropped('${student._id}')">
+                <button class="btn btn-sm btn-outline" style="color: var(--warning-color); border-color: var(--warning-color);" onclick="markAsDropped('${student.id}')">
                 <i class="fas fa-user-times"></i> Drop
                 </button>
                   `
@@ -721,7 +717,7 @@ function createStudentRow(student, isRecent = false) {
                 ${
                   currentUser && currentUser.role === "admin"
                     ? `
-                <button class="btn btn-sm btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" onclick="confirmDeleteStudent('${student._id}')">
+                <button class="btn btn-sm btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" onclick="confirmDeleteStudent('${student.id}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
                 `
@@ -1016,7 +1012,7 @@ function updateUsersTable() {
             <td>
                 ${
                   currentUser && currentUser.role === "admin"
-                    ? `<button class="btn btn-sm btn-outline" onclick="editUser('${user._id}')">
+                    ? `<button class="btn btn-sm btn-outline" onclick="editUser('${user.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>`
                     : ""
@@ -1136,7 +1132,7 @@ function updatePaymentsTable() {
             <td class="capitalize">${payment.payment_method.replace("_", " ")}</td>
             <td class="font-mono">${payment.receipt_number}</td>
             <td>
-                <button class="btn btn-sm btn-outline" onclick="downloadPaymentReceipt('${payment._id}')">
+                <button class="btn btn-sm btn-outline" onclick="downloadPaymentReceipt('${payment.id}')">
                     <i class="fas fa-download"></i> Receipt
                 </button>
             </td>
@@ -1166,7 +1162,7 @@ function clearPaymentFilters() {
 }
 
 function openPaymentModal(studentId) {
-  const student = students.find((s) => s._id === studentId)
+  const student = students.find((s) => s.id == studentId)
   if (!student) return
 
   selectedStudentForPayment = student
@@ -1222,7 +1218,7 @@ async function handlePayment(e) {
   }
 
   const paymentData = {
-    student_id: selectedStudentForPayment._id,
+    student_id: selectedStudentForPayment.id,
     amount: amount,
     payment_method: method,
     fee_type: feeType,
@@ -1284,7 +1280,7 @@ function loadReports() {
 
 // PDF Generation
 function generateReceipt(studentId) {
-  const student = students.find((s) => s._id === studentId)
+  const student = students.find((s) => s.id == studentId)
   if (!student) return
 
   const { jsPDF } = window.jspdf
@@ -1320,7 +1316,7 @@ function generateReceipt(studentId) {
   // Receipt details
   doc.setFontSize(9)
   doc.setTextColor(31, 41, 55)
-  doc.text(`Receipt No: RCP-${student._id.slice(-8)}`, 20, 35)
+  doc.text(`Receipt No: RCP-${student.id.toString().padStart(8, "0")}`, 20, 35)
   doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 20, 35, { align: "right" })
 
   // Student details table (compact for A5)
@@ -1332,10 +1328,10 @@ function generateReceipt(studentId) {
       ["Father's Name", student.father || ""],
       ["Phone", student.phone || ""],
       ["Course", student.course],
-      ["Total Fee", `\u20b9${student.total_fee}`],
-      ...(student.discount && student.discount > 0 ? [["Discount", `\u20b9${student.discount}`]] : []),
-      ["Paid Amount", `\u20b9${student.paid_amount || 0}`],
-      ["Balance", `\u20b9${student.total_fee - (student.paid_amount || 0)}`],
+      ["Total Fee", `₹${student.total_fee}`],
+      ...(student.discount && student.discount > 0 ? [["Discount", `₹${student.discount}`]] : []),
+      ["Paid Amount", `₹${student.paid_amount || 0}`],
+      ["Balance", `₹${student.total_fee - (student.paid_amount || 0)}`],
       [
         "Status",
         (() => {
@@ -1428,7 +1424,7 @@ function generatePaymentReceipt(payment) {
     head: [["Field", "Details"]],
     body: [
       ["Student Name", payment.student_name],
-      ["Amount Paid", `\u20b9${payment.amount}`],
+      ["Amount Paid", `₹${payment.amount}`],
       ["Fee Type", payment.fee_type ? payment.fee_type.replace(/([A-Z])/g, " $1").trim() : "N/A"],
       ["Payment Method", payment.payment_method.replace("_", " ")],
       ["Receipt Number", payment.receipt_number],
@@ -1549,7 +1545,7 @@ function editCourse(courseId) {
 }
 
 function editUser(userId) {
-  const user = users.find((u) => u._id === userId)
+  const user = users.find((u) => u.id === userId)
   if (!user) return
   editingUserId = userId
   document.getElementById("editUsername").value = user.username
@@ -1617,7 +1613,7 @@ async function deleteUser(userId) {
 }
 
 function downloadPaymentReceipt(paymentId) {
-  const payment = payments.find((p) => p._id === paymentId)
+  const payment = payments.find((p) => p.id === paymentId)
   if (payment) {
     generatePaymentReceipt(payment)
   }
@@ -1747,13 +1743,12 @@ function generateStudentsPDF(studentsList, status) {
   showToast(`Students report downloaded successfully!`, "success")
 }
 
-// Mark student as dropped
 window.markAsDropped = (studentId) => {
   if (confirm("Are you sure you want to mark this student as dropped? This action cannot be undone.")) {
     updateStudentStatus(studentId, "Dropped")
   }
 }
-// Mark student as undropped (Active)
+
 window.markAsUndropped = (studentId) => {
   if (confirm("Are you sure you want to mark this student as active again?")) {
     updateStudentStatus(studentId, "Active")
