@@ -1,6 +1,6 @@
+
 // Configuration
-//const API_BASE = "/api"
-const API_BASE = "http://localhost:5000/api"
+const API_BASE = window.location.hostname === "localhost" ? "http://localhost:5000/api" : "/api" // Use relative path for production
 
 // Global State
 let currentUser = null
@@ -306,12 +306,15 @@ function showDashboard() {
   if (currentUser) {
     document.getElementById("welcomeUser").textContent = `Welcome, ${currentUser.username}`
 
-    // Show users tab only for admins
-    const usersTab = document.getElementById("usersTab")
+    // Remove or add users tab based on role
+    const usersTabBtn = document.querySelector("[data-tab=\"users\"]")
+    const usersTabContent = document.getElementById("users")
     if (currentUser.role === "admin") {
-      usersTab.style.display = "block"
+      usersTabBtn.style.display = "block"
+      usersTabContent.style.display = "block"
     } else {
-      usersTab.style.display = "none"
+      usersTabBtn.style.display = "none"
+      usersTabContent.style.display = "none"
     }
   }
 }
@@ -409,7 +412,8 @@ async function apiCall(endpoint, options = {}) {
   })
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
+    const errorData = await response.json()
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
   }
 
   return response.json()
@@ -417,9 +421,15 @@ async function apiCall(endpoint, options = {}) {
 
 function toDateSafe(val) {
   try {
-    return new Date(val)
-  } catch {
-    return new Date()
+    const date = new Date(val);
+    if (isNaN(date.getTime())) {
+        console.warn(`Invalid date value: ${val}`);
+        return null; // Or throw an error, depending on desired behavior
+    }
+    return date;
+  } catch (e) {
+    console.error(`Error parsing date "${val}":`, e);
+    return null; // Or re-throw, or return new Date(), based on desired behavior
   }
 }
 
@@ -509,30 +519,8 @@ function updateRecentStudentsTable() {
   const pageItems = recentStudentsAll.slice(start, start + recentStudentsPageSize)
 
   pageItems.forEach((student) => {
-    // Build row specifically for dashboard columns to avoid mismatch errors with createStudentRow
-    const row = document.createElement("tr")
-    const phone = student.phone || ""
-    const enrolled = student.enrollment_date ? new Date(student.enrollment_date).toLocaleDateString() : ""
-    const father = student.father || ""
-    const course = student.course || ""
-
-    row.innerHTML = `
-      <td>${student.name || ""}</td>
-      <td>${phone}</td>
-      <td>${enrolled}</td>
-      <td>${father}</td>
-      <td>${course}</td>
-      <td>
-        <div class="flex gap-2">
-          <button class="btn btn-sm btn-outline" onclick="openPaymentModal('${student.id}')">
-            <i class="fas fa-credit-card"></i> Pay
-          </button>
-          <button class="btn btn-sm btn-outline" onclick="confirmDeleteStudent('${student.id}')">
-            <i class="fas fa-trash"></i> Delete
-          </button>
-        </div>
-      </td>
-    `
+    // Use the shared row creation function for consistency, passing `isRecent = true`
+    const row = createStudentRow(student, true)
     tbody.appendChild(row)
   })
 
@@ -564,6 +552,11 @@ function updateRecentStudentsPagination(totalPages) {
       Next
     </button>
   `
+}
+
+function calculateStudentStatus(student) {
+  if (!student) return "Unknown"
+  return student.calculated_status || student.status
 }
 
 function updateStudentsTableLegacy() {
@@ -642,32 +635,7 @@ function createStudentRow(student, isRecent = false) {
   const row = document.createElement("tr")
   const balance = student.total_fee - (student.paid_amount || 0)
 
-  // Calculate status
-  let status = student.status
-  // Find course duration in months
-  const course = courses.find((c) => c.name === student.course)
-  let courseMonths = 0
-  if (course && course.duration) {
-    // Extract number from duration string (e.g., '6 months')
-    const match = course.duration.match(/(\d+)/)
-    if (match) courseMonths = Number.parseInt(match[1], 10)
-  }
-  // Calculate end date
-  let endDate = null
-  if (student.enrollment_date && courseMonths > 0) {
-    const enrollDate = new Date(student.enrollment_date)
-    endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-  }
-  const today = new Date()
-  if (student.status === "Dropped") {
-    status = "Dropped"
-  } else if ((student.paid_amount || 0) >= student.total_fee) {
-    status = "Completed"
-  } else if (endDate && today > endDate) {
-    status = "Inactive"
-  } else {
-    status = "Active"
-  }
+  const status = student.calculated_status || student.status
 
   const statusBadge = getStatusBadge(status)
   const feeBadge = balance > 0 ? "badge-danger" : "badge-success"
@@ -679,12 +647,13 @@ function createStudentRow(student, isRecent = false) {
     student.name,
     student.phone || "",
     student.dob ? new Date(student.dob).toLocaleDateString() : "",
-    student.father || "",
     student.course,
-    ...(isRecent ? [] : [`₹${student.total_fee} ${discountBadge}`, `₹${student.paid_amount || 0}`, `₹${balance}`]),
+    ...(isRecent ? [] : [student.father || ""]),
+    ...(isRecent ? [`₹${student.total_fee} ${discountBadge}`] : [`₹${student.total_fee}`]),
+    ...(isRecent ? [`<span class="badge ${feeBadge}">₹${student.paid_amount || 0}/₹${student.total_fee}</span>`] : [`₹${student.paid_amount || 0}`]),
+    ...(isRecent ? [] : [`₹${balance}`]),
     new Date(student.enrollment_date).toLocaleDateString(),
     `<span class="badge ${statusBadge}">${status}</span>`,
-    ...(isRecent ? [`<span class="badge ${feeBadge}">₹${student.paid_amount || 0}/₹${student.total_fee}</span>`] : []),
     `
             <div class="flex gap-2">
                 ${
@@ -758,29 +727,7 @@ function getFilteredStudents() {
       (student.phone && student.phone.toLowerCase().includes(searchTerm)) ||
       (student.father && student.father.toLowerCase().includes(searchTerm))
 
-    // Calculate actual status (same logic as in createStudentRow)
-    let actualStatus = student.status
-    const course = courses.find((c) => c.name === student.course)
-    let courseMonths = 0
-    if (course && course.duration) {
-      const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = Number.parseInt(match[1], 10)
-    }
-    let endDate = null
-    if (student.enrollment_date && courseMonths > 0) {
-      const enrollDate = new Date(student.enrollment_date)
-      endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-    }
-    const today = new Date()
-    if (student.status === "Dropped") {
-      actualStatus = "Dropped"
-    } else if ((student.paid_amount || 0) >= student.total_fee) {
-      actualStatus = "Completed"
-    } else if (endDate && today > endDate) {
-      actualStatus = "Inactive"
-    } else {
-      actualStatus = "Active"
-    }
+    const actualStatus = student.calculated_status || student.status
 
     const matchesBranch = branchFilter === "all" || student.branch === branchFilter
     const matchesStatus = statusFilter === "all" || actualStatus === statusFilter
@@ -1294,17 +1241,21 @@ function generateReceipt(studentId) {
   doc.setFontSize(16)
   doc.setTextColor(220, 38, 38) // Red color
 
-  // Add logo image with proper async loading
-  const img = new Image()
-  img.onload = () => {
-    doc.addImage(img, "JPEG", 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
-  }
-  img.onerror = () => {
-    // Fallback to placeholder if image fails to load
-    doc.setFillColor(220, 38, 38)
-    doc.circle(20, 15, 4, "F")
-  }
-  img.src = "gurukulss.jpg"
+  // Add logo image - using base64 approach
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  canvas.width = 50
+  canvas.height = 50
+  
+  // Create a simple logo placeholder (you can replace this with actual image data)
+  ctx.fillStyle = '#4CAF50'
+  ctx.fillRect(0, 0, 50, 50)
+  ctx.fillStyle = 'white'
+  ctx.font = '12px Arial'
+  ctx.textAlign = 'center'
+  ctx.fillText('GCI', 25, 30)
+  const imgData = canvas.toDataURL('image/png')
+  doc.addImage(imgData, 'PNG', 15, 8, 12, 12)
 
   // Institute name with logo
   doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth / 2, 15, { align: "center" })
@@ -1334,30 +1285,7 @@ function generateReceipt(studentId) {
       ["Balance", `₹${student.total_fee - (student.paid_amount || 0)}`],
       [
         "Status",
-        (() => {
-          // Use the same status logic as in the table
-          let status = student.status
-          const course = courses.find((c) => c.name === student.course)
-          let courseMonths = 0
-          if (course && course.duration) {
-            const match = course.duration.match(/(\d+)/)
-            if (match) courseMonths = Number.parseInt(match[1], 10)
-          }
-          let endDate = null
-          if (student.enrollment_date && courseMonths > 0) {
-            const enrollDate = new Date(student.enrollment_date)
-            endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-          }
-          const today = new Date()
-          if ((student.paid_amount || 0) >= student.total_fee) {
-            status = "Completed"
-          } else if (endDate && today > endDate) {
-            status = "Inactive"
-          } else {
-            status = "Active"
-          }
-          return status
-        })(),
+        student.calculated_status || student.status,
       ],
       ["Enrollment Date", new Date(student.enrollment_date).toLocaleDateString()],
     ],
@@ -1393,17 +1321,21 @@ function generatePaymentReceipt(payment) {
   doc.setFontSize(16)
   doc.setTextColor(220, 38, 38) // Red color
 
-  // Add logo image with proper async loading
-  const img = new Image()
-  img.onload = () => {
-    doc.addImage(img, "JPEG", 15, 8, 12, 12) // Position logo at (15,8) with size 12x12mm
-  }
-  img.onerror = () => {
-    // Fallback to placeholder if image fails to load
-    doc.setFillColor(220, 38, 38)
-    doc.circle(20, 15, 4, "F")
-  }
-  img.src = "gurukulss.jpg"
+  // Add logo image - using base64 approach
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  canvas.width = 50
+  canvas.height = 50
+  
+  // Create a simple logo placeholder (you can replace this with actual image data)
+  ctx.fillStyle = '#4CAF50'
+  ctx.fillRect(0, 0, 50, 50)
+  ctx.fillStyle = 'white'
+  ctx.font = '12px Arial'
+  ctx.textAlign = 'center'
+  ctx.fillText('GCI', 25, 30)
+  const imgData = canvas.toDataURL('image/png')
+  doc.addImage(imgData, 'PNG', 15, 8, 12, 12)
 
   // Institute name with logo
   doc.text("GURUKUL COMPUTER INSTITUTE", pageWidth / 2, 15, { align: "center" })
@@ -1464,27 +1396,7 @@ function exportReport() {
   doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 35, { align: "center" })
 
   const tableData = students.map((student) => {
-    // Calculate actual status (same logic as in createStudentRow)
-    let actualStatus = student.status
-    const course = courses.find((c) => c.name === student.course)
-    let courseMonths = 0
-    if (course && course.duration) {
-      const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = Number.parseInt(match[1], 10)
-    }
-    let endDate = null
-    if (student.enrollment_date && courseMonths > 0) {
-      const enrollDate = new Date(student.enrollment_date)
-      endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-    }
-    const today = new Date()
-    if ((student.paid_amount || 0) >= student.total_fee) {
-      actualStatus = "Completed"
-    } else if (endDate && today > endDate) {
-      actualStatus = "Inactive"
-    } else {
-      actualStatus = "Active"
-    }
+    const actualStatus = student.calculated_status || student.status
 
     return [
       student.name,
@@ -1651,29 +1563,7 @@ function downloadStudentsByStatus(status) {
   const filteredStudents = students.filter((student) => {
     if (status === "all") return true
 
-    // Calculate actual status
-    let actualStatus = student.status
-    const course = courses.find((c) => c.name === student.course)
-    let courseMonths = 0
-    if (course && course.duration) {
-      const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = Number.parseInt(match[1], 10)
-    }
-    let endDate = null
-    if (student.enrollment_date && courseMonths > 0) {
-      const enrollDate = new Date(student.enrollment_date)
-      endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-    }
-    const today = new Date()
-    if (student.status === "Dropped") {
-      actualStatus = "Dropped"
-    } else if ((student.paid_amount || 0) >= student.total_fee) {
-      actualStatus = "Completed"
-    } else if (endDate && today > endDate) {
-      actualStatus = "Inactive"
-    } else {
-      actualStatus = "Active"
-    }
+    const actualStatus = student.calculated_status || student.status
 
     return actualStatus === status
   })
@@ -1694,29 +1584,7 @@ function generateStudentsPDF(studentsList, status) {
   doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 35, { align: "center" })
 
   const tableData = studentsList.map((student) => {
-    // Calculate actual status
-    let actualStatus = student.status
-    const course = courses.find((c) => c.name === student.course)
-    let courseMonths = 0
-    if (course && course.duration) {
-      const match = course.duration.match(/(\d+)/)
-      if (match) courseMonths = Number.parseInt(match[1], 10)
-    }
-    let endDate = null
-    if (student.enrollment_date && courseMonths > 0) {
-      const enrollDate = new Date(student.enrollment_date)
-      endDate = new Date(enrollDate.setMonth(enrollDate.getMonth() + courseMonths))
-    }
-    const today = new Date()
-    if (student.status === "Dropped") {
-      actualStatus = "Dropped"
-    } else if ((student.paid_amount || 0) >= student.total_fee) {
-      actualStatus = "Completed"
-    } else if (endDate && today > endDate) {
-      actualStatus = "Inactive"
-    } else {
-      actualStatus = "Active"
-    }
+    const actualStatus = student.calculated_status || student.status
 
     return [
       student.name,
@@ -1800,4 +1668,3 @@ style.textContent = `
     .font-mono { font-family: 'Courier New', monospace; }
 `
 document.head.appendChild(style)
-
